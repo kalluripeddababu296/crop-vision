@@ -1,18 +1,8 @@
-# Crop Stress and Quality Detection System
-# requirements.txt
-# Install with: pip install -r requirements.txt
-
-# ---- Web Framework ----
 flask==3.0.3
 flask-cors==4.0.1
 
-# ---- Streamlit UI ----
-streamlit==1.35.0
-
-# ---- Image Processing ----
-opencv-python==4.10.0.82
-Pillow==9.4.0 --only-binary=:all:
+opencv-python-headless==4.10.0.82
+Pillow==9.2.0
 numpy==1.26.4
 
-# ---- HTTP client (used by Streamlit to call Flask + Open-Meteo) ----
 requests==2.32.3
