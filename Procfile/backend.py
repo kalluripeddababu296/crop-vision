@@ -10,12 +10,14 @@ from flask_cors import CORS
 from image_processing import analyze_image
 from scoring import classify_stress, calculate_health_score, generate_recommendations
 
+import os
+
 app = Flask(__name__)
-CORS(app)  # Allow frontend (HTML) to call this API
+CORS(app)
 
 
 # ---------------------------------------------------------------------------
-# Home Route (Fixes 404)
+# Home Route
 # ---------------------------------------------------------------------------
 @app.route("/", methods=["GET"])
 def home():
@@ -56,7 +58,6 @@ def analyze():
     if image_file.filename == "":
         return jsonify({"error": "Empty image file"}), 400
 
-
     # -----------------------------
     # 2. Get inputs
     # -----------------------------
@@ -66,7 +67,6 @@ def analyze():
         soil_moisture = float(request.form.get("soil_moisture", 50))
     except:
         return jsonify({"error": "Invalid numeric input"}), 400
-
 
     # -----------------------------
     # 3. Validate ranges
@@ -80,7 +80,6 @@ def analyze():
     if not (-20 <= temperature <= 60):
         return jsonify({"error": "Temperature must be -20 to 60°C"}), 400
 
-
     # -----------------------------
     # 4. Image processing
     # -----------------------------
@@ -90,7 +89,6 @@ def analyze():
     if "error" in img_result:
         return jsonify(img_result), 422
 
-
     # Extract values
     green_score = img_result["green_score"]
     yellow_pct = img_result["yellow_percentage"]
@@ -98,12 +96,10 @@ def analyze():
     is_blurry = img_result["is_blurry"]
     blur_score = img_result["blur_score"]
 
-
     # -----------------------------
     # 5. Stress classification
     # -----------------------------
     stress_level = classify_stress(green_score)
-
 
     # -----------------------------
     # 6. Health score
@@ -114,7 +110,6 @@ def analyze():
         temperature=temperature,
         humidity=humidity
     )
-
 
     # -----------------------------
     # 7. Recommendations
@@ -128,7 +123,6 @@ def analyze():
         brown_pct=brown_pct
     )
 
-
     # -----------------------------
     # 8. Final response
     # -----------------------------
@@ -138,32 +132,30 @@ def analyze():
         "recommendations": recommendations,
 
         "image_analysis": {
-            "green_score": green_score,
-            "green_percentage": img_result["green_percentage"],
-            "yellow_percentage": yellow_pct,
-            "brown_percentage": brown_pct,
+            "green_score": float(green_score),
+            "green_percentage": float(img_result["green_percentage"]),
+            "yellow_percentage": float(yellow_pct),
+            "brown_percentage": float(brown_pct),
         },
 
         "environmental_inputs": {
-            "temperature": temperature,
-            "humidity": humidity,
-            "soil_moisture": soil_moisture,
+            "temperature": float(temperature),
+            "humidity": float(humidity),
+            "soil_moisture": float(soil_moisture),
         },
 
-        "blur_warning": is_blurry,
-        "blur_score": blur_score
+        "blur_warning": bool(is_blurry),
+        "blur_score": float(blur_score)
     })
 
 
 # ---------------------------------------------------------------------------
-# Run server
+# Run server (LOCAL only)
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
     print("=" * 55)
     print(" Crop Stress Detection API  →  http://127.0.0.1:5000")
     print("=" * 55)
 
-    import os
-
-port = int(os.environ.get("PORT", 5000))
-app.run(host="0.0.0.0", port=port)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
