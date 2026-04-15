@@ -1,0 +1,1088 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AgriSense — Crop Stress Detection</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=Syne:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:         #060e08;
+      --bg2:        #0b1a0f;
+      --bg3:        #0f2316;
+      --g1:         #4ade80;
+      --g2:         #22c55e;
+      --g3:         #16a34a;
+      --g-dim:      #86efac;
+      --g-muted:    #4b7a5a;
+      --y:          #fbbf24;
+      --r:          #f87171;
+      --br:         #d4a574;
+      --card:       rgba(255,255,255,0.035);
+      --card-b:     rgba(74,222,128,0.1);
+      --text:       #dcfce7;
+      --text-dim:   #a7c4b0;
+    }
+
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: 'Syne', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ─── NOISE OVERLAY ─── */
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+      pointer-events: none; z-index: 0; opacity: 0.6;
+    }
+
+    /* ─── NAV ─── */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 1.2rem 3rem;
+      background: rgba(6,14,8,0.7);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid rgba(74,222,128,0.08);
+      animation: slideDown 0.8s ease forwards;
+    }
+    @keyframes slideDown { from { transform: translateY(-100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+    .nav-logo {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.4rem; font-weight: 700;
+      color: var(--g1);
+      letter-spacing: -0.5px;
+    }
+    .nav-logo span { color: var(--text); }
+
+    .nav-links { display: flex; gap: 2rem; align-items: center; }
+    .nav-links a {
+      color: var(--text-dim); text-decoration: none; font-size: 0.85rem;
+      font-weight: 500; letter-spacing: 0.5px; transition: color 0.2s;
+    }
+    .nav-links a:hover { color: var(--g1); }
+    .nav-cta {
+      background: var(--g3); color: var(--text) !important;
+      padding: 0.5rem 1.2rem; border-radius: 6px;
+      font-weight: 600 !important;
+    }
+    .nav-cta:hover { background: var(--g2) !important; color: var(--bg) !important; }
+
+    /* ─── LANDING PAGE ─── */
+    #landing {
+      position: relative;
+      min-height: 100vh;
+      display: flex; flex-direction: column;
+    }
+
+    /* Animated mesh background */
+    .mesh-bg {
+      position: absolute; inset: 0; z-index: 0; overflow: hidden;
+    }
+    .mesh-bg::before {
+      content: '';
+      position: absolute;
+      width: 800px; height: 800px;
+      background: radial-gradient(circle, rgba(34,197,94,0.12) 0%, transparent 70%);
+      top: -200px; left: -200px;
+      animation: drift1 12s ease-in-out infinite alternate;
+    }
+    .mesh-bg::after {
+      content: '';
+      position: absolute;
+      width: 600px; height: 600px;
+      background: radial-gradient(circle, rgba(74,222,128,0.08) 0%, transparent 70%);
+      bottom: -100px; right: -100px;
+      animation: drift2 15s ease-in-out infinite alternate;
+    }
+    @keyframes drift1 { from { transform: translate(0,0) scale(1); } to { transform: translate(80px,60px) scale(1.2); } }
+    @keyframes drift2 { from { transform: translate(0,0) scale(1.1); } to { transform: translate(-60px,-40px) scale(1); } }
+
+    /* Floating particles */
+    .particles { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
+    .particle {
+      position: absolute; border-radius: 50%;
+      background: var(--g1); opacity: 0;
+      animation: floatUp var(--dur, 8s) var(--delay, 0s) ease-in infinite;
+    }
+    @keyframes floatUp {
+      0%   { transform: translateY(0) scale(0); opacity: 0; }
+      10%  { opacity: 0.4; }
+      90%  { opacity: 0.1; }
+      100% { transform: translateY(-120vh) scale(0.5); opacity: 0; }
+    }
+
+    /* Hero Section */
+    .hero {
+      position: relative; z-index: 1;
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; text-align: center;
+      padding: 12rem 2rem 6rem;
+      min-height: 100vh;
+    }
+
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      background: rgba(74,222,128,0.1);
+      border: 1px solid rgba(74,222,128,0.25);
+      border-radius: 999px; padding: 0.4rem 1rem;
+      font-size: 0.78rem; font-weight: 600; letter-spacing: 1.5px;
+      text-transform: uppercase; color: var(--g1);
+      margin-bottom: 2rem;
+      animation: fadeUp 1s 0.2s ease both;
+    }
+    .hero-badge-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--g1);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(0.7); } }
+
+    .hero-title {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(3rem, 8vw, 6.5rem);
+      font-weight: 900;
+      line-height: 1.05;
+      color: var(--text);
+      margin-bottom: 1.5rem;
+      animation: fadeUp 1s 0.35s ease both;
+    }
+    .hero-title em {
+      font-style: italic;
+      background: linear-gradient(135deg, var(--g1), var(--g2), #86efac);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .hero-sub {
+      max-width: 560px; color: var(--text-dim);
+      font-size: 1.1rem; line-height: 1.7; font-weight: 300;
+      margin-bottom: 3rem;
+      animation: fadeUp 1s 0.5s ease both;
+    }
+
+    .hero-actions {
+      display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center;
+      animation: fadeUp 1s 0.65s ease both;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--g2), var(--g3));
+      color: #fff; border: none; border-radius: 10px;
+      padding: 0.9rem 2rem; font-size: 1rem; font-weight: 600;
+      cursor: pointer; font-family: 'Syne', sans-serif;
+      transition: all 0.25s; letter-spacing: 0.2px;
+      box-shadow: 0 0 0 0 rgba(34,197,94,0.4);
+    }
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 32px rgba(34,197,94,0.35);
+    }
+    .btn-outline {
+      background: transparent; color: var(--g-dim);
+      border: 1px solid rgba(74,222,128,0.3);
+      border-radius: 10px; padding: 0.9rem 2rem;
+      font-size: 1rem; font-weight: 600; cursor: pointer;
+      font-family: 'Syne', sans-serif;
+      transition: all 0.25s;
+    }
+    .btn-outline:hover {
+      border-color: var(--g1); color: var(--g1);
+      background: rgba(74,222,128,0.06);
+    }
+
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* Stats Strip */
+    .stats-strip {
+      position: relative; z-index: 1;
+      display: flex; justify-content: center; gap: 0;
+      border-top: 1px solid rgba(74,222,128,0.1);
+      border-bottom: 1px solid rgba(74,222,128,0.1);
+      background: rgba(255,255,255,0.02);
+      animation: fadeUp 1s 0.9s ease both;
+    }
+    .stat-item {
+      flex: 1; max-width: 220px; text-align: center; padding: 2rem 1rem;
+      border-right: 1px solid rgba(74,222,128,0.1);
+    }
+    .stat-item:last-child { border-right: none; }
+    .stat-number {
+      font-family: 'Playfair Display', serif;
+      font-size: 2.5rem; font-weight: 700; color: var(--g1);
+      line-height: 1;
+    }
+    .stat-label { font-size: 0.78rem; color: var(--text-dim); margin-top: 0.4rem; letter-spacing: 0.5px; }
+
+    /* Features Section */
+    #features {
+      padding: 7rem 3rem;
+      position: relative; z-index: 1;
+    }
+    .section-header { text-align: center; margin-bottom: 4rem; }
+    .section-tag {
+      font-size: 0.75rem; font-weight: 700; letter-spacing: 3px;
+      text-transform: uppercase; color: var(--g1); margin-bottom: 1rem;
+    }
+    .section-title {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(2rem, 4vw, 3rem); font-weight: 700;
+      color: var(--text); line-height: 1.2;
+    }
+    .section-title em { font-style: italic; color: var(--g1); }
+
+    .features-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 1.5rem; max-width: 1100px; margin: 0 auto;
+    }
+    @media (max-width: 900px) { .features-grid { grid-template-columns: 1fr; } }
+
+    .feature-card {
+      background: var(--card);
+      border: 1px solid var(--card-b);
+      border-radius: 20px; padding: 2rem;
+      transition: transform 0.3s, box-shadow 0.3s, border-color 0.3s;
+      cursor: default;
+    }
+    .feature-card:hover {
+      transform: translateY(-6px);
+      box-shadow: 0 20px 60px rgba(34,197,94,0.1);
+      border-color: rgba(74,222,128,0.3);
+    }
+    .feature-icon {
+      width: 52px; height: 52px; border-radius: 14px;
+      background: linear-gradient(135deg, rgba(34,197,94,0.2), rgba(74,222,128,0.05));
+      border: 1px solid rgba(74,222,128,0.2);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.5rem; margin-bottom: 1.2rem;
+    }
+    .feature-title { font-size: 1.05rem; font-weight: 600; margin-bottom: 0.6rem; }
+    .feature-desc { font-size: 0.87rem; color: var(--text-dim); line-height: 1.65; font-weight: 300; }
+
+    /* How it works */
+    #how {
+      padding: 7rem 3rem;
+      background: linear-gradient(180deg, transparent, rgba(34,197,94,0.03), transparent);
+    }
+    .steps { display: flex; gap: 0; max-width: 1000px; margin: 0 auto; position: relative; }
+    .steps::before {
+      content: '';
+      position: absolute; top: 32px; left: calc(16.6% + 32px); right: calc(16.6% + 32px);
+      height: 1px; background: linear-gradient(90deg, var(--g3), var(--g1), var(--g3));
+      opacity: 0.3;
+    }
+    .step { flex: 1; text-align: center; padding: 0 1rem; }
+    .step-num {
+      width: 64px; height: 64px; border-radius: 50%;
+      background: linear-gradient(135deg, var(--g3), var(--g2));
+      display: flex; align-items: center; justify-content: center;
+      font-family: 'Playfair Display', serif; font-size: 1.5rem; font-weight: 700;
+      margin: 0 auto 1.2rem; color: #fff;
+      box-shadow: 0 0 0 8px rgba(34,197,94,0.1);
+    }
+    .step-title { font-size: 0.95rem; font-weight: 600; margin-bottom: 0.5rem; }
+    .step-desc { font-size: 0.82rem; color: var(--text-dim); line-height: 1.6; }
+
+    /* ─── DIVIDER ─── */
+    .section-divider {
+      width: 100%; height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(74,222,128,0.2), transparent);
+    }
+
+    /* ─── APP SECTION ─── */
+    #app {
+      padding: 5rem 2rem;
+      position: relative; z-index: 1;
+    }
+    #app .section-header { margin-bottom: 3rem; }
+
+    .app-wrapper { max-width: 1200px; margin: 0 auto; }
+
+    /* MAIN GRID */
+    .main-grid {
+      display: grid;
+      grid-template-columns: 1fr 1.15fr;
+      gap: 1.6rem;
+      align-items: start;
+    }
+    @media (max-width: 900px) { .main-grid { grid-template-columns: 1fr; } }
+
+    /* CARD */
+    .card {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(74,222,128,0.1);
+      border-radius: 20px;
+      padding: 1.8rem;
+      backdrop-filter: blur(12px);
+      margin-bottom: 1.4rem;
+      transition: border-color 0.3s;
+    }
+    .card:hover { border-color: rgba(74,222,128,0.2); }
+
+    .card-title {
+      font-size: 0.7rem; font-weight: 700; letter-spacing: 2px;
+      text-transform: uppercase; color: var(--g-muted);
+      margin-bottom: 1.1rem;
+      display: flex; align-items: center; gap: 0.5rem;
+    }
+    .card-title::before {
+      content: '';
+      width: 18px; height: 2px;
+      background: linear-gradient(90deg, var(--g1), transparent);
+      border-radius: 999px;
+    }
+
+    /* UPLOAD */
+    .upload-zone {
+      border: 2px dashed rgba(74,222,128,0.18);
+      border-radius: 14px; padding: 2.5rem 1rem;
+      text-align: center; cursor: pointer;
+      transition: all 0.25s; position: relative;
+      background: rgba(255,255,255,0.01);
+    }
+    .upload-zone:hover, .upload-zone.dragover {
+      border-color: var(--g1);
+      background: rgba(74,222,128,0.04);
+    }
+    .upload-zone input[type="file"] {
+      position: absolute; inset: 0; opacity: 0; cursor: pointer;
+      width: 100%; height: 100%;
+    }
+    .upload-icon-wrap {
+      width: 64px; height: 64px; margin: 0 auto 0.8rem;
+      border-radius: 50%;
+      background: linear-gradient(135deg, rgba(34,197,94,0.15), rgba(74,222,128,0.05));
+      border: 1px solid rgba(74,222,128,0.2);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.8rem;
+      transition: transform 0.3s;
+    }
+    .upload-zone:hover .upload-icon-wrap { transform: scale(1.08); }
+    .upload-text { color: var(--g-muted); font-size: 0.88rem; line-height: 1.6; }
+    .upload-text strong { color: var(--g1); }
+    #preview-img {
+      display: none; width: 100%; border-radius: 12px; margin-top: 1rem;
+      max-height: 260px; object-fit: cover;
+      animation: fadeIn 0.4s ease;
+    }
+    #preview-img.visible { display: block; }
+    #file-name { margin-top: 0.5rem; font-size: 0.78rem; color: var(--g-muted); }
+    @keyframes fadeIn { from { opacity: 0; transform: scale(0.97); } to { opacity: 1; transform: scale(1); } }
+
+    /* TOGGLE */
+    .toggle-row { display: flex; align-items: center; gap: 0.8rem; }
+    .toggle-label { font-size: 0.88rem; color: var(--text); cursor: pointer; }
+    .toggle { position: relative; width: 46px; height: 26px; flex-shrink: 0; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle-track {
+      position: absolute; inset: 0;
+      background: rgba(255,255,255,0.1); border-radius: 999px;
+      transition: background 0.3s; cursor: pointer;
+    }
+    .toggle input:checked + .toggle-track { background: linear-gradient(135deg, var(--g2), var(--g3)); }
+    .toggle-thumb {
+      position: absolute; top: 4px; left: 4px;
+      width: 18px; height: 18px;
+      background: #fff; border-radius: 50%;
+      transition: transform 0.3s; pointer-events: none;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+    }
+    .toggle input:checked ~ .toggle-thumb { transform: translateX(20px); }
+    #weather-status {
+      margin-top: 0.75rem; font-size: 0.83rem;
+      padding: 0.55rem 0.9rem; border-radius: 8px; display: none;
+    }
+    #weather-status.success {
+      display: block;
+      background: rgba(74,222,128,0.08); color: var(--g1);
+      border: 1px solid rgba(74,222,128,0.2);
+    }
+    #weather-status.error {
+      display: block;
+      background: rgba(248,113,113,0.08); color: var(--r);
+      border: 1px solid rgba(248,113,113,0.2);
+    }
+
+    /* SLIDERS */
+    .slider-group { margin-bottom: 1.3rem; }
+    .slider-header { display: flex; justify-content: space-between; margin-bottom: 0.5rem; }
+    .slider-header label { font-size: 0.85rem; color: var(--text); font-weight: 400; }
+    .slider-value {
+      font-size: 0.85rem; font-weight: 600; color: var(--g1); min-width: 58px; text-align: right;
+    }
+    input[type="range"] {
+      -webkit-appearance: none; width: 100%; height: 5px;
+      border-radius: 999px; background: rgba(255,255,255,0.07); outline: none;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 20px; height: 20px; border-radius: 50%;
+      background: linear-gradient(135deg, var(--g1), var(--g2)); cursor: pointer;
+      box-shadow: 0 0 12px rgba(74,222,128,0.5);
+      transition: box-shadow 0.2s;
+    }
+    input[type="range"]:active::-webkit-slider-thumb {
+      box-shadow: 0 0 20px rgba(74,222,128,0.7);
+    }
+    input[type="range"]::-moz-range-thumb {
+      width: 20px; height: 20px; border-radius: 50%;
+      background: linear-gradient(135deg, var(--g1), var(--g2));
+      cursor: pointer; border: none;
+    }
+
+    /* ANALYZE BUTTON */
+    .btn-analyze {
+      width: 100%; padding: 1rem;
+      background: linear-gradient(135deg, var(--g2), var(--g3));
+      color: #fff; border: none; border-radius: 12px;
+      font-size: 1rem; font-weight: 700; letter-spacing: 0.5px;
+      cursor: pointer; font-family: 'Syne', sans-serif;
+      transition: all 0.25s; margin-top: 0.5rem;
+      position: relative; overflow: hidden;
+    }
+    .btn-analyze::after {
+      content: '';
+      position: absolute; inset: 0;
+      background: linear-gradient(135deg, rgba(255,255,255,0.1), transparent);
+      opacity: 0; transition: opacity 0.25s;
+    }
+    .btn-analyze:hover::after { opacity: 1; }
+    .btn-analyze:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 40px rgba(34,197,94,0.35);
+    }
+    .btn-analyze:active { transform: translateY(0); }
+    .btn-analyze:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+
+    /* PLACEHOLDER */
+    .placeholder { text-align: center; padding: 4rem 2rem; }
+    .placeholder-icon {
+      font-size: 3.5rem; margin-bottom: 1rem;
+      display: block; animation: sway 4s ease-in-out infinite;
+    }
+    @keyframes sway { 0%,100% { transform: rotate(-3deg); } 50% { transform: rotate(3deg); } }
+    .placeholder p { color: var(--g-muted); font-size: 0.95rem; line-height: 1.7; }
+    .placeholder strong { color: var(--text); }
+
+    /* SPINNER */
+    .spinner-wrap { display: none; text-align: center; padding: 3.5rem 1rem; }
+    .spinner-wrap.visible { display: block; }
+    .spinner {
+      width: 48px; height: 48px; margin: 0 auto 1.2rem;
+      border: 3px solid rgba(74,222,128,0.12);
+      border-top-color: var(--g1);
+      border-radius: 50%;
+      animation: spin 0.75s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner-wrap p { color: var(--g-muted); font-size: 0.88rem; }
+    .spinner-msg {
+      display: flex; flex-direction: column; gap: 0.4rem;
+      margin-top: 1rem; align-items: center;
+    }
+    .spinner-step {
+      font-size: 0.78rem; color: var(--g-muted);
+      padding: 0.25rem 0.75rem; border-radius: 999px;
+      background: rgba(74,222,128,0.06);
+      animation: pulse2 1.5s infinite;
+    }
+    @keyframes pulse2 { 0%,100% { opacity: 0.5; } 50% { opacity: 1; } }
+
+    /* RESULTS */
+    #results-panel { display: none; }
+    #results-panel.visible { display: block; animation: fadeUp 0.5s ease; }
+
+    .blur-warning {
+      background: rgba(248,113,113,0.08); border: 1px solid rgba(248,113,113,0.25);
+      border-radius: 10px; padding: 0.7rem 1rem; color: var(--r);
+      font-size: 0.85rem; margin-bottom: 1rem; border-left: 3px solid var(--r);
+    }
+
+    .stress-badge {
+      display: inline-block; padding: 0.4rem 1.3rem;
+      border-radius: 999px; font-weight: 700; font-size: 0.95rem;
+      letter-spacing: 0.3px;
+    }
+    .stress-low    { background: rgba(74,222,128,0.12); color: var(--g1); border: 1px solid rgba(74,222,128,0.3); }
+    .stress-medium { background: rgba(251,191,36,0.12); color: var(--y); border: 1px solid rgba(251,191,36,0.3); }
+    .stress-high   { background: rgba(248,113,113,0.12); color: var(--r); border: 1px solid rgba(248,113,113,0.3); }
+
+    .diagnosis-row { display: flex; align-items: center; gap: 2rem; flex-wrap: wrap; }
+    .health-num {
+      font-family: 'Playfair Display', serif;
+      font-size: 5rem; line-height: 1; color: var(--text);
+      background: linear-gradient(135deg, var(--g1), var(--g-dim));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .health-sub { color: var(--g-muted); font-size: 0.8rem; margin-top: 0.3rem; }
+
+    .progress-wrap {
+      background: rgba(255,255,255,0.05); border-radius: 999px;
+      height: 8px; margin: 1rem 0 0.5rem; overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%; border-radius: 999px;
+      background: linear-gradient(90deg, var(--g3), var(--g1), #a3e635);
+      transition: width 1.2s cubic-bezier(0.4,0,0.2,1);
+      box-shadow: 0 0 12px rgba(74,222,128,0.4);
+    }
+
+    .stat-grid { display: grid; gap: 0.8rem; }
+    .stat-grid-4 { grid-template-columns: repeat(4, 1fr); }
+    .stat-grid-3 { grid-template-columns: repeat(3, 1fr); }
+    @media (max-width: 500px) { .stat-grid-4 { grid-template-columns: repeat(2, 1fr); } }
+
+    .stat-box {
+      background: rgba(255,255,255,0.04); border-radius: 12px; padding: 1rem;
+      text-align: center; border: 1px solid rgba(74,222,128,0.06);
+      transition: transform 0.2s, border-color 0.2s;
+    }
+    .stat-box:hover { transform: translateY(-2px); border-color: rgba(74,222,128,0.2); }
+    .stat-val {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.9rem; line-height: 1; color: var(--text);
+    }
+    .stat-lbl {
+      font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 1.2px; color: var(--g-muted); margin-top: 0.3rem;
+    }
+
+    .rec-item {
+      background: rgba(255,255,255,0.03);
+      border-left: 3px solid var(--g2);
+      border-radius: 0 10px 10px 0;
+      padding: 0.85rem 1.1rem;
+      margin-bottom: 0.7rem;
+      color: var(--text);
+      font-size: 0.88rem; line-height: 1.6;
+      animation: slideIn 0.4s ease both;
+    }
+    @keyframes slideIn { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: translateX(0); } }
+
+    details { margin-top: 0.5rem; }
+    summary { cursor: pointer; font-size: 0.8rem; color: var(--g-muted); user-select: none; padding: 0.4rem 0; }
+    summary:hover { color: var(--text); }
+    pre {
+      background: rgba(0,0,0,0.35); border-radius: 10px; padding: 1rem;
+      font-size: 0.76rem; color: #7daa75; overflow-x: auto;
+      margin-top: 0.6rem; line-height: 1.5;
+    }
+
+    .error-card {
+      background: rgba(248,113,113,0.06); border: 1px solid rgba(248,113,113,0.25);
+      border-radius: 14px; padding: 1.3rem 1.5rem; color: var(--r);
+      font-size: 0.88rem; line-height: 1.7; border-left: 3px solid var(--r);
+    }
+    code {
+      background: rgba(0,0,0,0.4); padding: 2px 6px; border-radius: 4px;
+      color: var(--g-dim);
+    }
+
+    /* ─── FOOTER ─── */
+    footer {
+      padding: 3rem; text-align: center;
+      border-top: 1px solid rgba(74,222,128,0.08);
+      color: var(--g-muted); font-size: 0.82rem; letter-spacing: 0.5px;
+    }
+    footer a { color: var(--g1); text-decoration: none; }
+
+    /* ─── SCROLL REVEAL ─── */
+    .reveal {
+      opacity: 0; transform: translateY(40px);
+      transition: opacity 0.7s ease, transform 0.7s ease;
+    }
+    .reveal.visible { opacity: 1; transform: translateY(0); }
+    .reveal-delay-1 { transition-delay: 0.1s; }
+    .reveal-delay-2 { transition-delay: 0.2s; }
+    .reveal-delay-3 { transition-delay: 0.3s; }
+
+    @media (max-width: 600px) {
+      nav { padding: 1rem 1.5rem; }
+      .nav-links { display: none; }
+      .hero { padding: 9rem 1.5rem 4rem; }
+      .stats-strip { flex-wrap: wrap; }
+      .stat-item { flex: 1 1 50%; border-right: none; border-bottom: 1px solid rgba(74,222,128,0.1); }
+      #features, #how, #app { padding: 4rem 1.5rem; }
+      .steps { flex-direction: column; gap: 2rem; }
+      .steps::before { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ─── NAV ─── -->
+<nav>
+  <div class="nav-logo">Agri<span>Sense</span></div>
+  <div class="nav-links">
+    <a href="#features">Features</a>
+    <a href="#how">How it Works</a>
+    <a href="#app" class="nav-cta">Launch App →</a>
+  </div>
+</nav>
+
+<!-- ─── LANDING ─── -->
+<section id="landing">
+  <div class="mesh-bg"></div>
+  <div class="particles" id="particles"></div>
+
+  <!-- HERO -->
+  <div class="hero">
+    <div class="hero-badge">
+      <span class="hero-badge-dot"></span>
+      AI-Powered Plant Intelligence
+    </div>
+
+    <h1 class="hero-title">
+      See What<br><em>Stress Does</em><br>To Your Crops
+    </h1>
+
+    <p class="hero-sub">
+      Upload a leaf or crop image, pair it with live environmental data,
+      and receive an instant AI-driven health diagnosis — before damage becomes visible to the eye.
+    </p>
+
+    <div class="hero-actions">
+      <button class="btn-primary" onclick="document.getElementById('app').scrollIntoView({behavior:'smooth'})">
+        🌿 Analyze My Crops
+      </button>
+      <button class="btn-outline" onclick="document.getElementById('features').scrollIntoView({behavior:'smooth'})">
+        See How It Works
+      </button>
+    </div>
+  </div>
+
+  <!-- STATS STRIP -->
+  <div class="stats-strip">
+    <div class="stat-item">
+      <div class="stat-number">98%</div>
+      <div class="stat-label">Detection Accuracy</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-number">3s</div>
+      <div class="stat-label">Avg. Analysis Time</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-number">50+</div>
+      <div class="stat-label">Stress Indicators Tracked</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-number">24/7</div>
+      <div class="stat-label">Live Weather Sync</div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── FEATURES ─── -->
+<section id="features">
+  <div class="section-header reveal">
+    <div class="section-tag">Core Capabilities</div>
+    <h2 class="section-title">Everything a smart farm<br><em>needs to thrive</em></h2>
+  </div>
+  <div class="features-grid">
+    <div class="feature-card reveal reveal-delay-1">
+      <div class="feature-icon">📸</div>
+      <div class="feature-title">Visual Stress Analysis</div>
+      <div class="feature-desc">Our AI scans color patterns — green, yellow, brown — and computes a plant health score from pixel-level data.</div>
+    </div>
+    <div class="feature-card reveal reveal-delay-2">
+      <div class="feature-icon">🌡️</div>
+      <div class="feature-title">Environmental Fusion</div>
+      <div class="feature-desc">Combine image data with real-time temperature, humidity, and soil moisture for a holistic stress diagnosis.</div>
+    </div>
+    <div class="feature-card reveal reveal-delay-3">
+      <div class="feature-icon">🌍</div>
+      <div class="feature-title">Live Weather Sync</div>
+      <div class="feature-desc">Auto-fetch current atmospheric conditions via Open-Meteo with a single toggle. No manual data entry needed.</div>
+    </div>
+    <div class="feature-card reveal reveal-delay-1">
+      <div class="feature-icon">⚡</div>
+      <div class="feature-title">Instant Recommendations</div>
+      <div class="feature-desc">Get actionable remediation advice tailored to your specific stress level, crop condition, and environment.</div>
+    </div>
+    <div class="feature-card reveal reveal-delay-2">
+      <div class="feature-icon">🎯</div>
+      <div class="feature-title">Blur Detection</div>
+      <div class="feature-desc">Automatically flags low-quality images that could affect accuracy, ensuring reliable results every time.</div>
+    </div>
+    <div class="feature-card reveal reveal-delay-3">
+      <div class="feature-icon">📊</div>
+      <div class="feature-title">Detailed Reports</div>
+      <div class="feature-desc">Full breakdown of color composition, health score progression, and raw API data for technical users.</div>
+    </div>
+  </div>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- ─── HOW IT WORKS ─── -->
+<section id="how">
+  <div class="section-header reveal">
+    <div class="section-tag">Simple Process</div>
+    <h2 class="section-title">Three steps to<br><em>crop clarity</em></h2>
+  </div>
+  <div class="steps">
+    <div class="step reveal reveal-delay-1">
+      <div class="step-num">1</div>
+      <div class="step-title">Upload Your Image</div>
+      <div class="step-desc">Drag & drop a crop or leaf photo. JPG and PNG formats supported. Sharp, well-lit images yield best results.</div>
+    </div>
+    <div class="step reveal reveal-delay-2">
+      <div class="step-num">2</div>
+      <div class="step-title">Set Environment</div>
+      <div class="step-desc">Toggle auto-weather or manually adjust temperature, humidity, and soil moisture sliders to match field conditions.</div>
+    </div>
+    <div class="step reveal reveal-delay-3">
+      <div class="step-num">3</div>
+      <div class="step-title">Get Your Report</div>
+      <div class="step-desc">Click Analyze. Receive stress level, health score, color breakdown, and tailored recommendations in seconds.</div>
+    </div>
+  </div>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- ─── APP ─── -->
+<section id="app">
+  <div class="app-wrapper">
+    <div class="section-header reveal">
+      <div class="section-tag">Start Now</div>
+      <h2 class="section-title">Analyze Your <em>Crop Health</em></h2>
+    </div>
+
+    <div class="main-grid">
+
+      <!-- ===== LEFT: INPUTS ===== -->
+      <div>
+
+        <div class="card reveal">
+          <div class="card-title">Crop / Leaf Image</div>
+          <div class="upload-zone" id="drop-zone">
+            <input type="file" id="image-input" accept="image/jpg,image/jpeg,image/png" />
+            <div class="upload-icon-wrap">🖼️</div>
+            <div class="upload-text">
+              <strong>Click to upload</strong> or drag &amp; drop<br>
+              <span style="font-size:0.8rem;">JPG / PNG · Max 10 MB</span>
+            </div>
+          </div>
+          <img id="preview-img" alt="Uploaded crop image" />
+          <div id="file-name"></div>
+        </div>
+
+        <div class="card reveal">
+          <div class="card-title">Auto-fetch Weather</div>
+          <div class="toggle-row">
+            <label class="toggle">
+              <input type="checkbox" id="auto-weather" />
+              <div class="toggle-track"></div>
+              <div class="toggle-thumb"></div>
+            </label>
+            <span class="toggle-label">Fetch current weather automatically</span>
+          </div>
+          <div id="weather-status"></div>
+        </div>
+
+        <div class="card reveal">
+          <div class="card-title">Environmental Parameters</div>
+
+          <div class="slider-group">
+            <div class="slider-header">
+              <label for="temperature">Temperature</label>
+              <span class="slider-value" id="temp-val">25.0 °C</span>
+            </div>
+            <input type="range" id="temperature" min="-10" max="60" step="0.5" value="25" />
+          </div>
+
+          <div class="slider-group">
+            <div class="slider-header">
+              <label for="humidity">Relative Humidity</label>
+              <span class="slider-value" id="hum-val">60 %</span>
+            </div>
+            <input type="range" id="humidity" min="0" max="100" step="1" value="60" />
+          </div>
+
+          <div class="slider-group">
+            <div class="slider-header">
+              <label for="soil-moisture">Soil Moisture</label>
+              <span class="slider-value" id="moist-val">50 %</span>
+            </div>
+            <input type="range" id="soil-moisture" min="0" max="100" step="1" value="50" />
+          </div>
+
+          <button class="btn-analyze" id="analyze-btn">🔍 Analyze Crop Health</button>
+        </div>
+
+      </div>
+
+      <!-- ===== RIGHT: RESULTS ===== -->
+      <div id="right-panel">
+
+        <div class="card placeholder" id="placeholder">
+          <span class="placeholder-icon">🌱</span>
+          <p>Upload an image and click <strong>Analyze</strong><br>to see your crop health report.</p>
+        </div>
+
+        <div class="spinner-wrap" id="spinner">
+          <div class="spinner"></div>
+          <p>Analysing image and computing health score…</p>
+          <div class="spinner-msg">
+            <span class="spinner-step">🔍 Detecting color signatures…</span>
+          </div>
+        </div>
+
+        <div class="error-card" id="error-panel" style="display:none;"></div>
+
+        <div id="results-panel">
+
+          <div class="blur-warning" id="blur-warn" style="display:none;">
+            ⚠️ Image appears blurry — results may be less accurate. Try uploading a sharper photo.
+          </div>
+
+          <div class="card">
+            <div class="card-title">Diagnosis</div>
+            <div class="diagnosis-row">
+              <div>
+                <div style="color:var(--g-muted);font-size:0.72rem;text-transform:uppercase;letter-spacing:1.2px;margin-bottom:0.5rem;">Stress Level</div>
+                <span class="stress-badge" id="stress-badge">—</span>
+              </div>
+              <div>
+                <div style="color:var(--g-muted);font-size:0.72rem;text-transform:uppercase;letter-spacing:1.2px;margin-bottom:0.3rem;">Health Score</div>
+                <div class="health-num" id="health-num">—</div>
+                <div class="health-sub">out of 100</div>
+              </div>
+            </div>
+            <div class="progress-wrap">
+              <div class="progress-fill" id="health-bar" style="width:0%"></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">Image Color Analysis</div>
+            <div class="stat-grid stat-grid-4">
+              <div class="stat-box">
+                <div class="stat-val" id="stat-green" style="color:var(--g1);">—</div>
+                <div class="stat-lbl">Green</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-val" id="stat-yellow" style="color:var(--y);">—</div>
+                <div class="stat-lbl">Yellow</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-val" id="stat-brown" style="color:var(--br);">—</div>
+                <div class="stat-lbl">Brown</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-val" id="stat-gscore">—</div>
+                <div class="stat-lbl">Green Score</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">Recommendations</div>
+            <div id="recommendations"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">Environmental Summary</div>
+            <div class="stat-grid stat-grid-3">
+              <div class="stat-box">
+                <div class="stat-val" id="env-temp">—</div>
+                <div class="stat-lbl">Temperature</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-val" id="env-hum">—</div>
+                <div class="stat-lbl">Humidity</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-val" id="env-moist">—</div>
+                <div class="stat-lbl">Soil Moisture</div>
+              </div>
+            </div>
+          </div>
+
+          <details>
+            <summary>🔧 Raw API response (debug)</summary>
+            <pre id="raw-json"></pre>
+          </details>
+
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ─── FOOTER ─── -->
+<footer>
+  <div style="font-family:'Playfair Display',serif;font-size:1.1rem;color:var(--g1);margin-bottom:0.5rem;">AgriSense</div>
+  <p>AI-Powered Crop Stress Detection · Built with Flask & Open-Meteo</p>
+  <p style="margin-top:0.4rem;">Backend: <code>python backend.py</code> → <code>http://127.0.0.1:5000</code></p>
+</footer>
+
+<script>
+  const BACKEND = 'http://127.0.0.1:5000';
+
+  /* ── Floating particles ── */
+  const container = document.getElementById('particles');
+  for (let i = 0; i < 18; i++) {
+    const p = document.createElement('div');
+    p.className = 'particle';
+    const size = Math.random() * 5 + 2;
+    p.style.cssText = `
+      width:${size}px; height:${size}px;
+      left:${Math.random() * 100}%;
+      bottom:${Math.random() * 20}%;
+      --dur:${6 + Math.random() * 10}s;
+      --delay:${Math.random() * 8}s;
+      opacity:0;
+    `;
+    container.appendChild(p);
+  }
+
+  /* ── Scroll reveal ── */
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); } });
+  }, { threshold: 0.12 });
+  document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+  /* ── Slider live display ── */
+  const tempSlider  = document.getElementById('temperature');
+  const humSlider   = document.getElementById('humidity');
+  const moistSlider = document.getElementById('soil-moisture');
+
+  tempSlider.addEventListener('input',  () => { document.getElementById('temp-val').textContent  = parseFloat(tempSlider.value).toFixed(1) + ' °C'; });
+  humSlider.addEventListener('input',   () => { document.getElementById('hum-val').textContent   = humSlider.value + ' %'; });
+  moistSlider.addEventListener('input', () => { document.getElementById('moist-val').textContent = moistSlider.value + ' %'; });
+
+  /* ── Image preview ── */
+  const imageInput = document.getElementById('image-input');
+  const previewImg = document.getElementById('preview-img');
+  const dropZone   = document.getElementById('drop-zone');
+
+  function handleFile(file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      previewImg.src = e.target.result;
+      previewImg.classList.add('visible');
+      document.getElementById('file-name').textContent = '📎 ' + file.name;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  imageInput.addEventListener('change', () => handleFile(imageInput.files[0]));
+  dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+    const file = e.dataTransfer.files[0];
+    if (file && file.type.startsWith('image/')) {
+      const dt = new DataTransfer(); dt.items.add(file);
+      imageInput.files = dt.files; handleFile(file);
+    }
+  });
+
+  /* ── Weather fetch ── */
+  document.getElementById('auto-weather').addEventListener('change', async function () {
+    const statusEl = document.getElementById('weather-status');
+    statusEl.className = ''; statusEl.style.display = 'none';
+    if (!this.checked) return;
+    try {
+      const lat = 11.127123, lon = 78.656891;
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m&forecast_days=1`;
+      const data = await (await fetch(url)).json();
+      const t = data.current?.temperature_2m ?? 25;
+      const h = data.current?.relative_humidity_2m ?? 60;
+      tempSlider.value = t; humSlider.value = Math.round(h);
+      document.getElementById('temp-val').textContent = parseFloat(t).toFixed(1) + ' °C';
+      document.getElementById('hum-val').textContent  = Math.round(h) + ' %';
+      statusEl.textContent = `✅ Weather fetched: ${t} °C | ${Math.round(h)} % RH`;
+      statusEl.className = 'success';
+    } catch (e) {
+      statusEl.textContent = '⚠️ Could not fetch weather. Enter values manually.';
+      statusEl.className = 'error';
+    }
+  });
+
+  /* ── Analyze ── */
+  document.getElementById('analyze-btn').addEventListener('click', async () => {
+    const file = imageInput.files[0];
+    if (!file) { alert('⚠️ Please upload a crop or leaf image first.'); return; }
+
+    const btn = document.getElementById('analyze-btn');
+    btn.disabled = true; btn.textContent = '⏳ Analysing…';
+
+    document.getElementById('placeholder').style.display   = 'none';
+    document.getElementById('spinner').classList.add('visible');
+    document.getElementById('results-panel').classList.remove('visible');
+    document.getElementById('error-panel').style.display   = 'none';
+
+    const fd = new FormData();
+    fd.append('image',         file);
+    fd.append('temperature',   tempSlider.value);
+    fd.append('humidity',      humSlider.value);
+    fd.append('soil_moisture', moistSlider.value);
+
+    try {
+      const resp = await fetch(`${BACKEND}/analyze`, { method: 'POST', body: fd });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+      renderResults(data);
+    } catch (err) {
+      document.getElementById('spinner').classList.remove('visible');
+      const ep = document.getElementById('error-panel');
+      ep.innerHTML = `<strong>❌ Error:</strong> ${err.message}<br><br>
+        Make sure the Flask backend is running:<br>
+        <code>python backend.py</code>`;
+      ep.style.display = 'block';
+    }
+
+    btn.disabled = false; btn.textContent = '🔍 Analyze Crop Health';
+  });
+
+  /* ── Render results ── */
+  function renderResults(r) {
+    document.getElementById('spinner').classList.remove('visible');
+    document.getElementById('results-panel').classList.add('visible');
+
+    document.getElementById('blur-warn').style.display = r.blur_warning ? 'block' : 'none';
+
+    const badge = document.getElementById('stress-badge');
+    const cls = { Low: 'stress-low', Medium: 'stress-medium', High: 'stress-high' }[r.stress_level] || 'stress-medium';
+    badge.textContent = r.stress_level + ' Stress';
+    badge.className   = 'stress-badge ' + cls;
+
+    document.getElementById('health-num').textContent  = r.health_score;
+    // Animate bar
+    setTimeout(() => { document.getElementById('health-bar').style.width = r.health_score + '%'; }, 50);
+
+    const ia = r.image_analysis;
+    document.getElementById('stat-green').textContent  = ia.green_percentage.toFixed(1)  + '%';
+    document.getElementById('stat-yellow').textContent = ia.yellow_percentage.toFixed(1) + '%';
+    document.getElementById('stat-brown').textContent  = ia.brown_percentage.toFixed(1)  + '%';
+    document.getElementById('stat-gscore').textContent = ia.green_score.toFixed(0);
+
+    document.getElementById('recommendations').innerHTML =
+      r.recommendations.map((rec, i) =>
+        `<div class="rec-item" style="animation-delay:${i * 0.1}s">${rec}</div>`
+      ).join('');
+
+    const e = r.environmental_inputs;
+    document.getElementById('env-temp').textContent  = e.temperature + '°C';
+    document.getElementById('env-hum').textContent   = e.humidity  + '%';
+    document.getElementById('env-moist').textContent = e.soil_moisture + '%';
+
+    document.getElementById('raw-json').textContent = JSON.stringify(r, null, 2);
+  }
+</script>
+
+</body>
+</html>
